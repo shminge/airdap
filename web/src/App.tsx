@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import './App.css'
 import Connected from './components/Connected';
 import Pending from './components/Pending';

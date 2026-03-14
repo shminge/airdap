@@ -1,9 +1,23 @@
+import type {PacketData} from "../domain/connect.ts";
+
 export type Sample = {
     time: number
     magnitude: number
 }
 
 export type Snippet = Sample[]
+
+export function snippetToPacketData(s: Snippet): PacketData {
+    const mags = s.map(sample => sample.magnitude);
+    return {
+        "x": [],
+        "y": [],
+        "z": [],
+        "mag": mags,
+        "id": ""
+    }
+}
+
 
 export function makeSnippetDetector(threshold: number, snippetDuration = 1000, sampleRate = 60) {
     let recording = false

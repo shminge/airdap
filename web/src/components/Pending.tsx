@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState } from "react"
 import { startMotion } from "../logic/motion"
-import { makeSnippetDetector, type Snippet } from "../logic/spike"
+import {makeSnippetDetector, type Snippet, snippetToPacketData} from "../logic/spike"
+import {sendPacket} from "../domain/connect.ts";
 
 export default function Pending() {
     const [enabled, setEnabled] = useState(false)
@@ -47,6 +48,7 @@ export default function Pending() {
                 const snippet = snippetDetector(x, y, z)
                 if (snippet) {
                     setLastSnippet(snippet)
+                    sendPacket(snippetToPacketData(snippet))
                 }
             })
 
