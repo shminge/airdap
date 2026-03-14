@@ -66,7 +66,7 @@ wss.on("connection", (socket) => {
 
         switch (msg.type) {
             case "handshake-data": {
-                const signal = msg.signal;
+                const signal = msg.mag;
 
                 if (signal == null) {
                     send(socket, { error: "Invalid data provided." });
