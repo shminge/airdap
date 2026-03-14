@@ -1,5 +1,69 @@
 import { WebSocketServer } from 'ws';
+import { compare } from "./compare";
 
+// Create web sockets registry
+
+// Create attempted connections registry
+
+// Create signal backlog
+const PURGE_TIME = 10_000;
+const pending = new Map();
+
+function purge() {
+    const cutoff = Date.now() - PURGE_TIME;
+    for (const [id, entry] of pending) {
+        if (entry.timestamp < cutoff) pending.delete(id);
+    }
+}
+
+function findMatch(incomingSignal) {
+    for (const [id, entry] of pending) {
+        if (compare(entry.signal, incomingSignal)) return id;
+    }
+    return null;
+}
+
+// Create web socket server
+const port = 1234
+const server = new WebSocketServer({
+    port: port
+});
+
+function messageSocket() {
+    
+}
+
+// Handle events
+server.on("connection", (socket) => {
+    const id = crypto.randomUUID;
+    console.log(`Client connected: ${id}`);
+    console.log(`Socket URL: ${socket.url}`);
+
+    // Add socket to registry?
+
+    socket.on("message", (raw) => {
+        let msg;
+        try {
+            msg = JSON.parse(raw);
+        } catch {
+            socket.send(JSON.stringify({ error: 'Invalid JSON' }));
+            return;
+        }
+
+        if (msg.type == "handshake-data") {
+            // Search for matches
+            // If none, add
+            // If matched, create pair and message back about ice-candidacy
+        }
+    })
+
+    socket.on("close", () => {
+        // Remove all trace of this id (pending, connections, etc)
+    })
+});
+
+
+/*
 const server = new WebSocketServer({ port: 1234 });
 
 const pending = new Map();   // waiting for a match
@@ -107,3 +171,4 @@ server.on('connection', (socket) => {
 });
 
 console.log('WebSocket server running on ws://localhost:1234');
+*/
