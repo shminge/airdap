@@ -3,7 +3,8 @@ import { startMotion } from "../logic/motion";
 import { makeSnippetDetector, snippetToPacketData } from "../logic/spike";
 import { sendPacket, connect, type PacketData } from "../domain/connect";
 
-const WS_URL = "ws://127.0.0.1:1234";
+const WS_URL = "https://handshake-3y3j.onrender.com";
+//"ws://127.0.0.1:1234";
 
 export default function Pending() {
     const [enabled, setEnabled] = useState(false);

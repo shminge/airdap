@@ -32,7 +32,7 @@ function send(socket, msg) {
 }
 
 // Create web socket server
-const port = 1234;
+const port = process.env.PORT || 1234;
 const server = new WebSocketServer({ port });
 console.log(`WebSocket server listening on port ${port}`);
 
