@@ -77,5 +77,5 @@ export function compare(a, b, threshold = 0.8) {
 
   // Both metrics must agree
   //return dtwDist < threshold && corr > 0.6;
-  return corr > 0.85;
+  return Math.abs(corr) > 0.85;
 }
