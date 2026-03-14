@@ -82,9 +82,6 @@ export default function Pending({ onConnected }: { onConnected: (ch: RTCDataChan
     return (
         <div className="page pending-page">
             <div className="pending-content">
-                <h1 className="app-title">Handshake</h1>
-                <p className="app-subtitle">Shake two phones together to share files</p>
-
                 <button className="primary-btn" onClick={handleStart} disabled={!canStart}>
                     {canStart ? 'Start' : 'Started'}
                 </button>
