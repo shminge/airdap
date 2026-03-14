@@ -27,9 +27,6 @@ const CONNECTION_TIMEOUT_MS = 30_000;
 
 /**
  * Set up a WebRTC peer connection using trickle ICE.
- * ICE candidates are exchanged individually as they are discovered,
- * which is essential for mobile CGNAT (carrier-grade NAT) traversal.
- *
  * Returns a promise that resolves with the open RTCDataChannel,
  * or rejects on ICE failure / timeout.
  */
@@ -37,23 +34,35 @@ export function setupWebRTC(role: 'offerer' | 'answerer'): Promise<RTCDataChanne
     return new Promise((resolve, reject) => {
         const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-        // ICE candidates that arrived before setRemoteDescription was called.
-        const pendingCandidates: RTCIceCandidateInit[] = [];
+        // Each signaling step must happen at most once.
+        let offerHandled = false;
+        let answerHandled = false;
         let remoteDescSet = false;
+        let settled = false;
 
-        const fail = (reason: unknown) => {
+        // ICE candidates buffered before remote description is applied.
+        const pendingCandidates: RTCIceCandidateInit[] = [];
+
+        const settle = (fn: () => void) => {
+            if (settled) return;
+            settled = true;
             cleanup();
             clearTimeout(timeoutId);
-            pc.close();
-            reject(reason instanceof Error ? reason : new Error(String(reason)));
+            fn();
+        };
+
+        const fail = (reason: unknown) => {
+            settle(() => {
+                pc.close();
+                reject(reason instanceof Error ? reason : new Error(String(reason)));
+            });
         };
 
         const timeoutId = setTimeout(
-            () => fail(new Error(`WebRTC connection timed out (${CONNECTION_TIMEOUT_MS / 1000}s)`)),
+            () => fail(new Error(`WebRTC timed out after ${CONNECTION_TIMEOUT_MS / 1000}s`)),
             CONNECTION_TIMEOUT_MS
         );
 
-        // Trickle ICE: send each candidate to the peer as it is discovered.
         pc.onicecandidate = (event) => {
             if (event.candidate) {
                 sendPacket({ type: 'ice-candidate', candidate: event.candidate.toJSON() });
@@ -61,7 +70,7 @@ export function setupWebRTC(role: 'offerer' | 'answerer'): Promise<RTCDataChanne
         };
 
         pc.oniceconnectionstatechange = () => {
-            console.log('[WebRTC] ICE state:', pc.iceConnectionState);
+            console.log('[WebRTC] ICE:', pc.iceConnectionState, '| signaling:', pc.signalingState);
             if (pc.iceConnectionState === 'failed') {
                 fail(new Error('ICE connection failed — no route to peer'));
             }
@@ -76,15 +85,32 @@ export function setupWebRTC(role: 'offerer' | 'answerer'): Promise<RTCDataChanne
         const cleanup = addListener(async (msg: any) => {
             try {
                 if (msg.type === 'sdp-offer' && role === 'answerer') {
+                    if (offerHandled) {
+                        console.warn('[WebRTC] Ignoring duplicate sdp-offer');
+                        return;
+                    }
+                    if (pc.signalingState !== 'stable') {
+                        console.warn('[WebRTC] sdp-offer arrived in unexpected state:', pc.signalingState);
+                        return;
+                    }
+                    offerHandled = true;
                     await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
                     remoteDescSet = true;
                     await applyPendingCandidates();
                     const answer = await pc.createAnswer();
                     await pc.setLocalDescription(answer);
-                    // Send answer immediately — don't wait for ICE gathering (trickle ICE).
                     sendPacket({ type: 'sdp-answer', sdp: pc.localDescription as RTCSessionDescriptionInit });
 
                 } else if (msg.type === 'sdp-answer' && role === 'offerer') {
+                    if (answerHandled) {
+                        console.warn('[WebRTC] Ignoring duplicate sdp-answer');
+                        return;
+                    }
+                    if (pc.signalingState !== 'have-local-offer') {
+                        console.warn('[WebRTC] sdp-answer arrived in unexpected state:', pc.signalingState);
+                        return;
+                    }
+                    answerHandled = true;
                     await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
                     remoteDescSet = true;
                     await applyPendingCandidates();
@@ -93,37 +119,30 @@ export function setupWebRTC(role: 'offerer' | 'answerer'): Promise<RTCDataChanne
                     if (remoteDescSet) {
                         await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
                     } else {
-                        // Buffer until remote description is set.
                         pendingCandidates.push(msg.candidate);
                     }
                 }
             } catch (err) {
+                console.error('[WebRTC] Signaling error:', err);
                 fail(err);
             }
         });
 
-        const onChannelOpen = (channel: RTCDataChannel) => {
-            cleanup();
-            clearTimeout(timeoutId);
-            resolve(channel);
-        };
-
         if (role === 'offerer') {
             const channel = pc.createDataChannel('files', { ordered: true });
-            channel.onopen = () => onChannelOpen(channel);
+            channel.onopen = () => settle(() => resolve(channel));
             channel.onerror = fail;
 
             pc.createOffer()
                 .then(offer => pc.setLocalDescription(offer))
                 .then(() => {
-                    // Send SDP immediately — candidates will trickle in separately.
                     sendPacket({ type: 'sdp-offer', sdp: pc.localDescription as RTCSessionDescriptionInit });
                 })
                 .catch(fail);
         } else {
             pc.ondatachannel = (event) => {
                 const channel = event.channel;
-                channel.onopen = () => onChannelOpen(channel);
+                channel.onopen = () => settle(() => resolve(channel));
                 channel.onerror = fail;
             };
         }

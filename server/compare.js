@@ -10,8 +10,6 @@ export function compare(a, b, threshold = 0.75) {
     return std === 0 ? arr.map(() => 0) : arr.map((x) => (x - mean) / std);
   };
 
-  const energy = (arr) => arr.reduce((s, x) => s + x * x, 0) / arr.length;
-
   const pearson = (x, y) => {
     const mx = x.reduce((a, b) => a + b, 0) / x.length;
     const my = y.reduce((a, b) => a + b, 0) / y.length;
@@ -24,47 +22,37 @@ export function compare(a, b, threshold = 0.75) {
   };
 
   // Determine input format and extract per-axis signals + magnitude
-  let axesA, axesB, magA, magB;
+  let signalsA, signalsB;
 
   if (a[0] && typeof a[0] === 'object' && !Array.isArray(a[0])) {
-    // {x, y, z}[] format (new client format)
-    axesA = ['x', 'y', 'z'].map(k => a.map(s => s[k]));
-    axesB = ['x', 'y', 'z'].map(k => b.map(s => s[k]));
-    magA = a.map(s => Math.sqrt(s.x ** 2 + s.y ** 2 + s.z ** 2));
-    magB = b.map(s => Math.sqrt(s.x ** 2 + s.y ** 2 + s.z ** 2));
+    // {x, y, z}[] format
+    const magA = a.map(s => Math.sqrt(s.x ** 2 + s.y ** 2 + s.z ** 2));
+    const magB = b.map(s => Math.sqrt(s.x ** 2 + s.y ** 2 + s.z ** 2));
+    signalsA = [magA, ...['x', 'y', 'z'].map(k => a.map(s => s[k]))];
+    signalsB = [magB, ...['x', 'y', 'z'].map(k => b.map(s => s[k]))];
   } else if (Array.isArray(a[0])) {
     // [[x,y,z]] format
-    axesA = [0, 1, 2].map(i => a.map(s => s[i]));
-    axesB = [0, 1, 2].map(i => b.map(s => s[i]));
-    magA = a.map(([x, y, z]) => Math.sqrt(x ** 2 + y ** 2 + z ** 2));
-    magB = b.map(([x, y, z]) => Math.sqrt(x ** 2 + y ** 2 + z ** 2));
+    const magA = a.map(([x, y, z]) => Math.sqrt(x ** 2 + y ** 2 + z ** 2));
+    const magB = b.map(([x, y, z]) => Math.sqrt(x ** 2 + y ** 2 + z ** 2));
+    signalsA = [magA, ...[0, 1, 2].map(i => a.map(s => s[i]))];
+    signalsB = [magB, ...[0, 1, 2].map(i => b.map(s => s[i]))];
   } else {
     // flat magnitude array (legacy)
-    axesA = [a];
-    axesB = [b];
-    magA = a;
-    magB = b;
+    signalsA = [a];
+    signalsB = [b];
   }
 
-  // Reject if one phone barely moved
-  const eA = energy(magA), eB = energy(magB);
-  const energyRatio = Math.max(eA, eB) / (Math.min(eA, eB) || 1e-6);
-  if (energyRatio > 3) {
-    console.log("Rejected: energy mismatch", energyRatio);
-    return false;
-  }
-
-  // Compare each axis: resample → z-score → |pearson|
+  // Resample → z-score → |pearson| for each signal, take the max
   const TARGET_LEN = 64;
-  const correlations = axesA.map((axA, i) => {
-    const axB = axesB[i];
-    const rA = norm(resample(axA, TARGET_LEN));
-    const rB = norm(resample(axB, TARGET_LEN));
+  const correlations = signalsA.map((sigA, i) => {
+    const sigB = signalsB[i];
+    const rA = norm(resample(sigA, TARGET_LEN));
+    const rB = norm(resample(sigB, TARGET_LEN));
     return Math.abs(pearson(rA, rB));
   });
 
-  const avgCorr = correlations.reduce((s, v) => s + v, 0) / correlations.length;
-  console.log({ correlations, avgCorr, energyRatio });
+  const maxCorr = Math.max(...correlations);
+  console.log({ correlations, maxCorr });
 
-  return avgCorr > threshold;
+  return maxCorr > threshold;
 }
