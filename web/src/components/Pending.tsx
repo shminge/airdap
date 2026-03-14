@@ -2,6 +2,7 @@ import { useState } from "react";
 import { startMotion } from "../logic/motion";
 import { makeSnippetDetector, snippetToPacketData } from "../logic/spike";
 import { sendPacket, connect, type PacketData } from "../domain/connect";
+import { usePacketListener } from "../domain/usePacketListener";
 
 const WS_URL = "https://handshake-iv6dtq.fly.dev";
 //"ws://127.0.0.1:1234";
@@ -9,6 +10,17 @@ const WS_URL = "https://handshake-iv6dtq.fly.dev";
 export default function Pending() {
     const [enabled, setEnabled] = useState(false);
     const [connecting, setConnecting] = useState(false);
+    const [text, setText] = useState<string>("");
+    const l = usePacketListener(
+        (v) => {
+            try {
+                let t = JSON.stringify(v);
+                setText(t);
+            } catch {
+                setText("Error parsing");
+            }
+        }
+    );
 
     const handleStart = async () => {
         setConnecting(true);
@@ -58,6 +70,9 @@ export default function Pending() {
                         ? "Connecting..."
                         : "Start the Motion"}
             </button>
+            <h1>
+                {text}
+            </h1>
         </div>
     );
 }

@@ -16,7 +16,7 @@ export type HandshakeData = {
 }
 
 
-export type PacketHandler = (data: PacketData) => void;
+export type PacketHandler = (data: any) => void;
 let socket: WebSocket | null = null;
 const listeners = new Set<(data: PacketData) => void>();
 
