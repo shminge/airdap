@@ -23,6 +23,7 @@ const ICE_SERVERS = [
 ];
 
 const CONNECTION_TIMEOUT_MS = 30_000;
+const MAX_ICE_RESTARTS = 1;
 
 /**
  * Set up a WebRTC peer connection using trickle ICE.
@@ -33,11 +34,12 @@ export function setupWebRTC(role: 'offerer' | 'answerer'): Promise<RTCDataChanne
     return new Promise((resolve, reject) => {
         const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
-        // Each signaling step must happen at most once.
+        // Each signaling step must happen at most once (reset on ICE restart).
         let offerHandled = false;
         let answerHandled = false;
         let remoteDescSet = false;
         let settled = false;
+        let iceRestarts = 0;
 
         // ICE candidates buffered before remote description is applied.
         const pendingCandidates: RTCIceCandidateInit[] = [];
@@ -69,15 +71,49 @@ export function setupWebRTC(role: 'offerer' | 'answerer'): Promise<RTCDataChanne
         };
 
         pc.oniceconnectionstatechange = () => {
-            console.log('[WebRTC] ICE:', pc.iceConnectionState, '| signaling:', pc.signalingState);
-            if (pc.iceConnectionState === 'failed') {
-                fail(new Error('ICE connection failed — no route to peer'));
+            const state = pc.iceConnectionState;
+            console.log('[WebRTC] ICE:', state, '| signaling:', pc.signalingState);
+
+            if (state === 'failed') {
+                if (iceRestarts < MAX_ICE_RESTARTS && !settled) {
+                    iceRestarts++;
+                    console.log(`[WebRTC] ICE failed — restart attempt ${iceRestarts}/${MAX_ICE_RESTARTS}`);
+
+                    // Reset signaling guards so the new offer/answer exchange can proceed.
+                    remoteDescSet = false;
+                    pendingCandidates.length = 0;
+
+                    if (role === 'offerer') {
+                        answerHandled = false;
+                        pc.createOffer({ iceRestart: true })
+                            .then(offer => pc.setLocalDescription(offer))
+                            .then(() => sendPacket({ type: 'sdp-offer', sdp: pc.localDescription as RTCSessionDescriptionInit }))
+                            .catch(fail);
+                    } else {
+                        // Answerer waits for the offerer to initiate the restart offer.
+                        offerHandled = false;
+                    }
+                } else {
+                    fail(new Error('ICE connection failed — no route to peer'));
+                }
+            }
+        };
+
+        // Adds a candidate, swallowing errors that are benign in practice:
+        // "no candidate str" can occur with stale candidates after an ICE restart,
+        // or with end-of-candidates signals on some browser versions.
+        const safeAddCandidate = async (candidate: RTCIceCandidateInit) => {
+            if (pc.connectionState === 'closed') return;
+            try {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (err) {
+                console.warn('[WebRTC] addIceCandidate error (ignored):', err instanceof Error ? err.message : err);
             }
         };
 
         const applyPendingCandidates = async () => {
             for (const c of pendingCandidates.splice(0)) {
-                await pc.addIceCandidate(new RTCIceCandidate(c));
+                await safeAddCandidate(c);
             }
         };
 
@@ -117,9 +153,9 @@ export function setupWebRTC(role: 'offerer' | 'answerer'): Promise<RTCDataChanne
 
                 } else if (msg.type === 'ice-candidate' && msg.candidate) {
                     if (remoteDescSet) {
-                        await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+                        await safeAddCandidate(msg.candidate as RTCIceCandidateInit);
                     } else {
-                        pendingCandidates.push(msg.candidate);
+                        pendingCandidates.push(msg.candidate as RTCIceCandidateInit);
                     }
                 }
             } catch (err) {
