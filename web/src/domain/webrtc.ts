@@ -1,45 +1,28 @@
 import { addListener, sendPacket } from './connect';
 
-// STUN for direct connections + TURN for mobile CGNAT relay.
-// openrelay.metered.ca is a free public TURN service for development.
-const ICE_SERVERS = [
+// Fallback if server fails to provide TURN credentials.
+const STUN_ONLY: RTCIceServer[] = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    {
-        urls: 'turn:openrelay.metered.ca:80',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-    },
-    {
-        urls: 'turn:openrelay.metered.ca:443',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-    },
-    {
-        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-        username: 'openrelayproject',
-        credential: 'openrelayproject',
-    },
 ];
 
 const CONNECTION_TIMEOUT_MS = 30_000;
-const MAX_ICE_RESTARTS = 1;
 
 /**
  * Set up a WebRTC peer connection using trickle ICE.
+ * iceServers should come from the server's match-success message (Metered TURN).
  * Returns a promise that resolves with the open RTCDataChannel,
  * or rejects on ICE failure / timeout.
  */
-export function setupWebRTC(role: 'offerer' | 'answerer'): Promise<RTCDataChannel> {
+export function setupWebRTC(role: 'offerer' | 'answerer', iceServers?: RTCIceServer[]): Promise<RTCDataChannel> {
     return new Promise((resolve, reject) => {
-        const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+        const pc = new RTCPeerConnection({ iceServers: iceServers ?? STUN_ONLY });
 
-        // Each signaling step must happen at most once (reset on ICE restart).
+        // Each signaling step must happen at most once.
         let offerHandled = false;
         let answerHandled = false;
         let remoteDescSet = false;
         let settled = false;
-        let iceRestarts = 0;
 
         // ICE candidates buffered before remote description is applied.
         const pendingCandidates: RTCIceCandidateInit[] = [];
@@ -71,49 +54,19 @@ export function setupWebRTC(role: 'offerer' | 'answerer'): Promise<RTCDataChanne
         };
 
         pc.oniceconnectionstatechange = () => {
-            const state = pc.iceConnectionState;
-            console.log('[WebRTC] ICE:', state, '| signaling:', pc.signalingState);
-
-            if (state === 'failed') {
-                if (iceRestarts < MAX_ICE_RESTARTS && !settled) {
-                    iceRestarts++;
-                    console.log(`[WebRTC] ICE failed — restart attempt ${iceRestarts}/${MAX_ICE_RESTARTS}`);
-
-                    // Reset signaling guards so the new offer/answer exchange can proceed.
-                    remoteDescSet = false;
-                    pendingCandidates.length = 0;
-
-                    if (role === 'offerer') {
-                        answerHandled = false;
-                        pc.createOffer({ iceRestart: true })
-                            .then(offer => pc.setLocalDescription(offer))
-                            .then(() => sendPacket({ type: 'sdp-offer', sdp: pc.localDescription as RTCSessionDescriptionInit }))
-                            .catch(fail);
-                    } else {
-                        // Answerer waits for the offerer to initiate the restart offer.
-                        offerHandled = false;
-                    }
-                } else {
-                    fail(new Error('ICE connection failed — no route to peer'));
-                }
-            }
-        };
-
-        // Adds a candidate, swallowing errors that are benign in practice:
-        // "no candidate str" can occur with stale candidates after an ICE restart,
-        // or with end-of-candidates signals on some browser versions.
-        const safeAddCandidate = async (candidate: RTCIceCandidateInit) => {
-            if (pc.connectionState === 'closed') return;
-            try {
-                await pc.addIceCandidate(new RTCIceCandidate(candidate));
-            } catch (err) {
-                console.warn('[WebRTC] addIceCandidate error (ignored):', err instanceof Error ? err.message : err);
+            console.log('[WebRTC] ICE:', pc.iceConnectionState, '| signaling:', pc.signalingState);
+            if (pc.iceConnectionState === 'failed') {
+                fail(new Error('ICE connection failed — no route to peer'));
             }
         };
 
         const applyPendingCandidates = async () => {
             for (const c of pendingCandidates.splice(0)) {
-                await safeAddCandidate(c);
+                try {
+                    await pc.addIceCandidate(new RTCIceCandidate(c));
+                } catch (err) {
+                    console.warn('[WebRTC] addIceCandidate error (ignored):', err instanceof Error ? err.message : err);
+                }
             }
         };
 
@@ -153,9 +106,13 @@ export function setupWebRTC(role: 'offerer' | 'answerer'): Promise<RTCDataChanne
 
                 } else if (msg.type === 'ice-candidate' && msg.candidate) {
                     if (remoteDescSet) {
-                        await safeAddCandidate(msg.candidate as RTCIceCandidateInit);
+                        try {
+                            await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
+                        } catch (err) {
+                            console.warn('[WebRTC] addIceCandidate error (ignored):', err instanceof Error ? err.message : err);
+                        }
                     } else {
-                        pendingCandidates.push(msg.candidate as RTCIceCandidateInit);
+                        pendingCandidates.push(msg.candidate);
                     }
                 }
             } catch (err) {

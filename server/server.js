@@ -30,6 +30,25 @@ function send(socket, msg) {
     }
 }
 
+// Fetch short-lived TURN credentials from Metered.
+// Returns an iceServers array, or null on error.
+async function getTurnCredentials() {
+    const apiKey = process.env.METERED_API_KEY;
+    try {
+        const res = await fetch(
+            `https://airdap.metered.live/api/v1/turn/credentials?apiKey=${apiKey}`
+        );
+        if (!res.ok) {
+            console.error("TURN credential fetch failed:", res.status);
+            return null;
+        }
+        return await res.json();
+    } catch (err) {
+        console.error("TURN credential error:", err);
+        return null;
+    }
+}
+
 // server setup
 const port = 3000; // to match fly.io deployment
 
@@ -50,7 +69,7 @@ wss.on("connection", (socket) => {
 
     connections.set(id, socket);
 
-    socket.on("message", (raw) => {
+    socket.on("message", async (raw) => {
         let msg;
 
         try {
@@ -94,14 +113,19 @@ wss.on("connection", (socket) => {
 
                     const matchSocket = connections.get(matchId);
 
+                    // Fetch TURN credentials once and share with both peers.
+                    const iceServers = await getTurnCredentials();
+
                     send(matchSocket, {
                         type: "match-success",
-                        role: "offerer"
+                        role: "offerer",
+                        iceServers,
                     });
 
                     send(socket, {
                         type: "match-success",
-                        role: "answerer"
+                        role: "answerer",
+                        iceServers,
                     });
                 }
 

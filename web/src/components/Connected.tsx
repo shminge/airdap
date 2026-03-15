@@ -47,7 +47,6 @@ export default function Connected({ channel }: { channel: RTCDataChannel }) {
 
         let offset = 0;
         while (offset < selectedFile.size) {
-            // Backpressure: wait if buffer is getting full
             if (channel.bufferedAmount > CHUNK_SIZE * 8) {
                 await new Promise<void>(resolve => {
                     channel.bufferedAmountLowThreshold = CHUNK_SIZE * 2;
@@ -64,6 +63,11 @@ export default function Connected({ channel }: { channel: RTCDataChannel }) {
         setSending(false);
     };
 
+    const formatSize = (bytes: number) => {
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / 1024 / 1024).toFixed(2)} MB`;
+    };
+
     return (
         <div className="page connected-page">
             <div className="connected-badge">Connected</div>
@@ -71,40 +75,44 @@ export default function Connected({ channel }: { channel: RTCDataChannel }) {
             <section className="file-section">
                 <h2>Send a file</h2>
                 <label className="file-picker">
+                    <span className="file-picker-icon">📎</span>
                     <input
                         type="file"
                         onChange={e => setSelectedFile(e.target.files?.[0] ?? null)}
                         disabled={sending}
                     />
                     {selectedFile
-                        ? <span>{selectedFile.name} &mdash; {(selectedFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                        ? <span>{selectedFile.name} — {formatSize(selectedFile.size)}</span>
                         : <span>Choose a file...</span>
                     }
                 </label>
-                <button
-                    className="primary-btn"
-                    onClick={sendFile}
-                    disabled={!selectedFile || sending}
-                >
-                    {sending ? `Sending ${sendProgress}%` : 'Send'}
-                </button>
+
                 {sending && (
                     <div className="progress-bar">
                         <div className="progress-fill" style={{ width: `${sendProgress}%` }} />
                     </div>
                 )}
+
+                <button
+                    className="primary-btn"
+                    onClick={sendFile}
+                    disabled={!selectedFile || sending}
+                >
+                    {sending ? `Sending — ${sendProgress}%` : 'Send'}
+                </button>
             </section>
 
             <section className="file-section">
                 <h2>Received files</h2>
                 {receivedFiles.length === 0
-                    ? <p className="empty-msg">Nothing received yet</p>
+                    ? <p className="empty-msg">Nothing yet</p>
                     : receivedFiles.map((f, i) => (
                         <div key={i} className="received-file">
-                            <a href={f.url} download={f.name} className="download-link">
-                                {f.name}
+                            <span className="download-link">{f.name}</span>
+                            <span className="file-size">{formatSize(f.size)}</span>
+                            <a href={f.url} download={f.name} className="download-btn">
+                                Save
                             </a>
-                            <span className="file-size">{(f.size / 1024 / 1024).toFixed(2)} MB</span>
                         </div>
                     ))
                 }

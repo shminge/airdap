@@ -1,23 +1,24 @@
-
-
-export default function Start(
-    {onStart}: {onStart: () => {}}
-) {
-    return <div className="start-section">
-        <div>
-            <h1>
-                How it works
-            </h1>
-            <ol>
-                <li>Press start and allow motion access</li>
-                <li>Handshake phones with your friend</li>
-                <li>Share files</li>
+export default function Start({ onStart }: { onStart: () => void }) {
+    return (
+        <div className="start-section">
+            <h1>How it works</h1>
+            <ol className="start-steps">
+                <li>
+                    <span className="step-num">1</span>
+                    Press start and allow motion access
+                </li>
+                <li>
+                    <span className="step-num">2</span>
+                    Shake hands with your friend's phone
+                </li>
+                <li>
+                    <span className="step-num">3</span>
+                    Share files instantly
+                </li>
             </ol>
-        </div>
-        <button onClick={onStart}>
-            <span>
+            <button className="start-btn" onClick={onStart}>
                 Start
-            </span>
-        </button>
-    </div>
+            </button>
+        </div>
+    );
 }

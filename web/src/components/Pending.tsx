@@ -4,22 +4,12 @@ import { makeSnippetDetector, snippetToPacketData } from "../logic/spike";
 import { sendPacket, connect } from "../domain/connect";
 import { setupWebRTC } from "../domain/webrtc";
 import { usePacketListener } from "../domain/usePacketListener";
-import Logo from "./Logo";
 import Shake from "./Shake";
 import Start from "./Start";
 
 const WS_URL = "wss://handshake-iv6dtq.fly.dev";
 
 type Phase = 'idle' | 'starting' | 'ready' | 'waiting' | 'matched' | 'error';
-
-const STATUS: Record<Phase, string> = {
-    idle: '',
-    starting: 'Starting...',
-    ready: 'Shake your phone to connect!',
-    waiting: 'Looking for a match... shake again if needed',
-    matched: 'Match found! Establishing connection...',
-    error: '',
-};
 
 export default function Pending({ onConnected }: { onConnected: (ch: RTCDataChannel) => void }) {
     const [phase, setPhase] = useState<Phase>('idle');
@@ -38,7 +28,7 @@ export default function Pending({ onConnected }: { onConnected: (ch: RTCDataChan
         } else if (msg.type === 'match-success') {
             updatePhase('matched');
             try {
-                const channel = await setupWebRTC(msg.role);
+                const channel = await setupWebRTC(msg.role, msg.iceServers ?? undefined);
                 onConnected(channel);
             } catch (err) {
                 setError(String(err));
@@ -50,7 +40,6 @@ export default function Pending({ onConnected }: { onConnected: (ch: RTCDataChan
     const handleStart = async () => {
         updatePhase('starting');
         try {
-            // This bit is ugly because iOS needs user interaction to start sensors
             // eslint-disable-next-line
             const DME = DeviceMotionEvent as any;
             if (typeof DME.requestPermission === "function") {
@@ -83,17 +72,19 @@ export default function Pending({ onConnected }: { onConnected: (ch: RTCDataChan
     const canStart = phase === 'idle' || phase === 'error';
 
     return (
-        <div className="">
-            {canStart ? 
-            
-            <>
-            
-                <Start onStart={handleStart}></Start>
-            </> :
-            <>
-                <Shake />
-            </>
-            }
+        <div style={{ width: '100%' }}>
+            {canStart ? (
+                <>
+                    {phase === 'error' && (
+                        <div className="error-tag" style={{ marginBottom: 12 }}>
+                            Error: {error}
+                        </div>
+                    )}
+                    <Start onStart={handleStart} />
+                </>
+            ) : (
+                <Shake phase={phase as 'starting' | 'ready' | 'waiting' | 'matched'} />
+            )}
         </div>
     );
 }
