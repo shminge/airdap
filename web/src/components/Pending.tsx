@@ -4,6 +4,9 @@ import { makeSnippetDetector, snippetToPacketData } from "../logic/spike";
 import { sendPacket, connect } from "../domain/connect";
 import { setupWebRTC } from "../domain/webrtc";
 import { usePacketListener } from "../domain/usePacketListener";
+import Logo from "./Logo";
+import Shake from "./Shake";
+import Start from "./Start";
 
 const WS_URL = "wss://handshake-iv6dtq.fly.dev";
 
@@ -80,22 +83,17 @@ export default function Pending({ onConnected }: { onConnected: (ch: RTCDataChan
     const canStart = phase === 'idle' || phase === 'error';
 
     return (
-        <div className="page pending-page">
-            <div className="pending-content">
-                <button className="primary-btn" onClick={handleStart} disabled={!canStart}>
-                    {canStart ? 'Start' : 'Started'}
-                </button>
-
-                {phase !== 'idle' && (
-                    <p className={`status-msg ${phase === 'error' ? 'status-error' : ''}`}>
-                        {phase === 'error' ? error : STATUS[phase]}
-                    </p>
-                )}
-
-                {phase === 'ready' && (
-                    <div className="shake-indicator" />
-                )}
-            </div>
+        <div className="">
+            {canStart ? 
+            
+            <>
+            
+                <Start onStart={handleStart}></Start>
+            </> :
+            <>
+                <Shake />
+            </>
+            }
         </div>
     );
 }

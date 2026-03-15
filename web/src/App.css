@@ -14,6 +14,61 @@
   gap: 16px;
 }
 
+.start-section {
+  background: #ffffff;
+  padding: 24px;
+  display: flex;
+  border: 8px solid black;
+  box-shadow: 8px 8px 0px black;
+  flex-direction: column;
+  align-items: start;
+  text-align: start;
+  color: black;
+}
+
+.start-section>h1 {
+  
+}
+
+.start-section>li {
+  font-weight: bold;
+}
+
+.start-section>button {
+  width:100%;
+  padding:8px;
+  border:none;
+  background:black;
+}
+
+.start-section>button>span {
+  color:white;
+}
+
+.start-btn {
+  padding: 20px 40px;
+  border-radius: 24px;
+  background: #eeeeee;
+  box-shadow: -4px -4px 4px #00000022 inset,
+  4px 4px 2px #ffffff inset,
+  0px 0px 40px #00000022;
+  border: none;
+  color: black;
+  font-size: 2em;
+}
+
+.start-btn:active {
+  padding: 20px 40px;
+  border-radius: 24px;
+  background: #eeeeee;
+  box-shadow: 4px 4px 4px #00000022 inset,
+  -4px -4px 2px #ffffff inset,
+  0px 0px 40px #00000022;
+  border: none;
+  color: black;
+  font-size: 2em;
+}
+
 .github {
   position: absolute;
   right: 24px;
